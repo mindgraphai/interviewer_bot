@@ -96,7 +96,7 @@ def init_db():
 
         print("Database initialized successfully.")
 
-        db.execute("""
-        ALTER TABLE interviews
-        ADD COLUMN candidate_profile TEXT;
-        """)
+        # db.execute("""
+        # ALTER TABLE interviews
+        # ADD COLUMN candidate_profile TEXT;
+        # """)

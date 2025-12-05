@@ -6,7 +6,8 @@ from app.database import get_db
 from app.models.report_models import FinalReport, SkillAssessment
 
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+def get_openai_client():
+    return OpenAI(api_key=OPENAI_API_KEY)
 
 
 def _get_threshold() -> float:
@@ -78,7 +79,7 @@ For each skill provide:
   }}
 """
 
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         temperature=0.25,
         messages=[

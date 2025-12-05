@@ -1,24 +1,29 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.utils.security import hash_password, generate_api_key
 from app.database import get_db
-from app.utils.security import hash_password, verify_password, generate_api_key
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
+class SignupRequest(BaseModel):
+    username: str
+    password: str
 
 @router.post("/signup")
-def signup(username: str, password: str):
-    api_key = generate_api_key()
-
+def signup(data: SignupRequest):
     with get_db() as db:
         try:
+            hashed_pw = hash_password(data.password)
+            api_key = generate_api_key()
             db.execute(
                 "INSERT INTO users (username, password, api_key) VALUES (?, ?, ?)",
-                (username, hash_password(password), api_key)
+                (data.username, hashed_pw, api_key)
             )
         except Exception:
-            raise HTTPException(status_code=409, detail="Username already exists")
+            raise HTTPException(status_code=400, detail="Username already exists")
+    
+    return {"api_key": api_key}
 
-    return {"message": "User created successfully", "api_key": api_key}
 
 
 @router.post("/login")

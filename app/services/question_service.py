@@ -3,7 +3,9 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY
 from app.database import get_db
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+
+def get_openai_client():
+    return OpenAI(api_key=OPENAI_API_KEY)
 
 
 def get_global_job_description():
@@ -64,7 +66,7 @@ Rules:
 - JSON ONLY. No markdown.
 """
 
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         temperature=0.6,
         messages=[
@@ -128,7 +130,7 @@ Rules:
 - Response: JSON string only (not array), no markdown
 """
 
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         temperature=0.8,
         messages=[

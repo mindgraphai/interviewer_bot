@@ -1,21 +1,34 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.database import get_db
-from app.security import verify_api_key
+from app.utils.security import verify_api_key
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+from fastapi import UploadFile, File
+from app.utils.pdf2text import extract_text_from_pdf
+
 @router.post("/set_job_description")
-def set_job_description(content: str, user=Depends(verify_api_key)):
-    # Only allow admin user (username: admin)
+async def set_job_description(
+    file: UploadFile = File(...),
+    user=Depends(verify_api_key)
+):
     if user["username"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can update JD")
 
+    # Read and extract text from PDF
+    pdf_bytes = await file.read()
+    jd_text = extract_text_from_pdf(pdf_bytes)
+
+    if not jd_text or len(jd_text.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Invalid or unreadable JD PDF")
+
+    # Store JD as plaintext only
     with get_db() as db:
-        db.execute("DELETE FROM job_description")  # keep only 1 global JD
+        db.execute("DELETE FROM job_description")
         db.execute(
             "INSERT INTO job_description (content) VALUES (?)",
-            (content,)
+            (jd_text,)
         )
 
     return {"message": "Job description updated successfully"}

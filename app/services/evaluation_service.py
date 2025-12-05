@@ -3,7 +3,8 @@ from openai import OpenAI
 from app.config import OPENAI_API_KEY
 from app.database import get_db
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+def get_openai_client():
+    return OpenAI(api_key=OPENAI_API_KEY)
 
 
 def get_profile_and_jd(interview_id: int):
@@ -68,7 +69,7 @@ Rules:
 - No markdown allowed
 """
 
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         temperature=0.2,
         messages=[

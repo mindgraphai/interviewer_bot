@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from app.security import verify_api_key
+from app.utils.security import verify_api_key
 from app.services.resume_service import process_resume_upload
 
 router = APIRouter(prefix="/interviews", tags=["Interview"])

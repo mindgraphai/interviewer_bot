@@ -1,8 +1,5 @@
-
-
-
 from fastapi import APIRouter, HTTPException, Depends
-from app.security import verify_api_key
+from app.utils.security import verify_api_key
 from app.database import get_db
 from app.services.question_service import (
     generate_consequential_questions,
@@ -15,6 +12,12 @@ router = APIRouter(prefix="/questions", tags=["Questions"])
 TOTAL_QUESTIONS = 15
 CONSEQUENTIAL_MAX = 8
 FOLLOWUP_MAX = 7
+
+
+from pydantic import BaseModel
+
+class AnswerInput(BaseModel):
+    answer: str
 
 
 def get_question_counts(interview_id: int):
@@ -38,37 +41,51 @@ def get_question_counts(interview_id: int):
     return total_asked, conseq_asked, follow_asked
 
 
-def fetch_next_consequential(interview_id: int) -> str:
-    """Pull the next unasked consequential question."""
+def fetch_next_consequential(interview_id: int) -> tuple[int, str]:
+    """Pull and mark the next unasked consequential question."""
     with get_db() as db:
         row = db.execute("""
-            SELECT id, question_text FROM questions
-            WHERE interview_id = ? AND asked = 0 AND source_type='consequential'
-            ORDER BY id ASC LIMIT 1
+            SELECT id, question_text
+            FROM questions
+            WHERE interview_id = ?
+              AND asked = 0
+              AND source_type = 'consequential'
+            ORDER BY id ASC
+            LIMIT 1
         """, (interview_id,)).fetchone()
 
     if not row:
         raise ValueError("No more consequential questions available.")
 
-    # Mark asked
-    with get_db
+    q_id = row["id"]
+    question_text = row["question_text"]
 
+    # Mark as asked
+    with get_db() as db:
+        db.execute(
+            "UPDATE questions SET asked = 1 WHERE id = ?",
+            (q_id,)
+        )
+
+    return q_id, question_text
 
 
 @router.post("/{question_id}/answer")
-def submit_answer(question_id: int, answer: str, user=Depends(verify_api_key)):
-    """
-    Handles evaluation workflow:
-    - Evaluate answer strictly
-    - Retry if vague (1 max)
-    - Attach next question if interview not done
-    - Mark completion status when last Q done
-    """
+def submit_answer(
+    question_id: int,
+    data: AnswerInput,  # receives JSON body: {"answer": "..."}
+    user=Depends(verify_api_key)
+):
+    answer = data.answer.strip()
+    if not answer:
+        raise HTTPException(status_code=400, detail="Answer cannot be empty")
+
+    # Lookup question & interview context
     with get_db() as db:
         row = db.execute("""
             SELECT q.interview_id, q.question_text
             FROM questions q
-            WHERE q.id=?
+            WHERE q.id = ?
         """, (question_id,)).fetchone()
 
     if not row:
@@ -77,10 +94,15 @@ def submit_answer(question_id: int, answer: str, user=Depends(verify_api_key)):
     interview_id = row["interview_id"]
     question_text = row["question_text"]
 
-    # Evaluate the answer using the AI model
-    result = evaluate_answer(question_text, answer, interview_id, question_id)
+    # Evaluate
+    result = evaluate_answer(
+        question_text,
+        answer,
+        interview_id,
+        question_id
+    )
 
-    # Retry needed (no next question provided)
+    # Retry mechanism
     if result.get("retry_required", False):
         return {
             "message": "Answer too vague. Retry required.",
@@ -88,20 +110,24 @@ def submit_answer(question_id: int, answer: str, user=Depends(verify_api_key)):
             "feedback": result.get("reject_reason", "")
         }
 
-    # Mark interview state as in-progress on first answer
+    # Update interview state on first valid answer
     with get_db() as db:
         db.execute(
-            "UPDATE interviews SET status='IN_PROGRESS' WHERE id=? AND status='GENERATING_QUESTIONS'",
+            "UPDATE interviews SET status='IN_PROGRESS' "
+            "WHERE id=? AND status='GENERATING_QUESTIONS'",
             (interview_id,)
         )
 
-    # Count answered questions
+    # Count how many answers scored for this interview
     with get_db() as db:
         answered = db.execute("""
-            SELECT COUNT(*) AS cnt FROM answers WHERE score IS NOT NULL
-        """).fetchone()["cnt"]
+            SELECT COUNT(*) AS cnt
+            FROM answers
+            WHERE score IS NOT NULL
+              AND question_id IN (SELECT id FROM questions WHERE interview_id=?)
+        """, (interview_id,)).fetchone()["cnt"]
 
-    # If this was the final question
+    # End of interview?
     if answered >= TOTAL_QUESTIONS:
         with get_db() as db:
             db.execute(
@@ -113,40 +139,86 @@ def submit_answer(question_id: int, answer: str, user=Depends(verify_api_key)):
             "done": True
         }
 
-    # Otherwise fetch the next question automatically
+    # Counts for next question logic
     with get_db() as db:
-        # Mark asked questions to get next
         conseq_count = db.execute("""
-            SELECT COUNT(*) AS cnt FROM questions
+            SELECT COUNT(*) AS cnt
+            FROM questions
             WHERE interview_id=? AND asked=1 AND source_type='consequential'
         """, (interview_id,)).fetchone()["cnt"]
 
         follow_count = db.execute("""
-            SELECT COUNT(*) AS cnt FROM questions
+            SELECT COUNT(*) AS cnt
+            FROM questions
             WHERE interview_id=? AND asked=1 AND source_type='followup'
         """, (interview_id,)).fetchone()["cnt"]
 
-    # Determine next question type
+    # Pick next Q
     if follow_count < answered and follow_count < FOLLOWUP_MAX:
         next_q = generate_followup_question(interview_id)
+        q_id = None  # Not stored here; service handles marking
     else:
-        # Use unasked consequential
-        with get_db() as db:
-            row = db.execute("""
-                SELECT id, question_text FROM questions
-                WHERE interview_id=? AND asked=0 AND source_type='consequential'
-                ORDER BY id ASC LIMIT 1
-            """, (interview_id,)).fetchone()
-            if not row:
-                raise HTTPException(status_code=500, detail="Missing pre-generated consequential questions")
-            q_id = row["id"]
-            next_q = row["question_text"]
-            db.execute("UPDATE questions SET asked=1 WHERE id=?", (q_id,))
+        # Ensure supply before fetching
+        generate_consequential_questions(interview_id)
+        q_id, next_q = fetch_next_consequential(interview_id)
 
     return {
         "message": "Answer evaluated",
         "retry_required": False,
         "score": result.get("score"),
         "feedback": result.get("feedback"),
-        "next_question": next_q
+        "next_question": next_q,
+        "next_question_id": q_id
+    }
+
+
+@router.get("/next/{interview_id}")
+def get_next_question(interview_id: int, user=Depends(verify_api_key)):
+    """Fetch the next unasked question. Generate if needed."""
+
+    with get_db() as db:
+        # Count asked questions
+        answered = db.execute("""
+            SELECT COUNT(*) AS cnt FROM answers
+            WHERE question_id IN (
+                SELECT id FROM questions WHERE interview_id=?
+            ) AND score IS NOT NULL
+        """, (interview_id,)).fetchone()["cnt"]
+
+        # Is interview complete?
+        if answered >= TOTAL_QUESTIONS:
+            return {"done": True, "message": "Interview already completed"}
+
+        # Count consequential asked
+        conseq_asked = db.execute("""
+            SELECT COUNT(*) AS cnt FROM questions
+            WHERE interview_id=? AND asked=1 AND source_type='consequential'
+        """, (interview_id,)).fetchone()["cnt"]
+
+    # Pre-generate consequential if needed
+    if conseq_asked < CONSEQUENTIAL_MAX:
+        generate_consequential_questions(interview_id)
+
+    # Fetch next unasked question
+    with get_db() as db:
+        row = db.execute("""
+            SELECT id, question_text, source_type
+            FROM questions
+            WHERE interview_id=? AND asked=0
+            ORDER BY id ASC LIMIT 1
+        """, (interview_id,)).fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="No more questions available")
+
+        q_id = row["id"]
+        q_text = row["question_text"]
+
+        # Mark question asked
+        db.execute("UPDATE questions SET asked=1 WHERE id=?", (q_id,))
+
+    return {
+        "question_id": q_id,
+        "question": q_text,
+        "done": False
     }

@@ -138,3 +138,8 @@ def init_db():
         exists = db.execute("SELECT COUNT(*) AS cnt FROM pass_threshold").fetchone()["cnt"]
         if exists == 0:
             db.execute("INSERT INTO pass_threshold (value) VALUES (0.7)")
+
+        # Add final_report column if not exists
+        existing_cols = [col["name"] for col in db.execute("PRAGMA table_info(interviews);")]
+        if "final_report" not in existing_cols:
+            db.execute("ALTER TABLE interviews ADD COLUMN final_report TEXT;")

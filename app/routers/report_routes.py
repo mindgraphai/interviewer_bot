@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.utils.security import verify_api_key
+from app.services.report_service import generate_final_report
 from app.database import get_db
 import json
 
@@ -9,46 +10,32 @@ router = APIRouter(prefix="/report", tags=["Report"])
 @router.get("/{interview_id}")
 def get_final_report(interview_id: int, user=Depends(verify_api_key)):
 
-    # Pull state and profile
+    # Ensure interview exists and check for stored report
     with get_db() as db:
-        interview = db.execute("""
-            SELECT status, candidate_profile
-            FROM interviews WHERE id=?
-        """, (interview_id,)).fetchone()
+        row = db.execute(
+            "SELECT status, final_report FROM interviews WHERE id=?",
+            (interview_id,),
+        ).fetchone()
 
-    if not interview:
+    if not row:
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    if interview["status"] != "COMPLETED":
-        raise HTTPException(status_code=400, detail="Interview not completed yet")
+    # If report already stored, just return it
+    if row["final_report"]:
+        try:
+            return json.loads(row["final_report"])
+        except Exception:
+            # Fallback: regenerate if stored JSON is somehow corrupt
+            report = generate_final_report(interview_id)
+            return report.model_dump()
 
-    candidate_profile = json.loads(interview["candidate_profile"])
+    # If no stored report yet, only allow if interview was completed
+    if row["status"] not in ("COMPLETED", "REPORTED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interview not ready for reporting. Current state: {row['status']}",
+        )
 
-    # Aggregate score from answers
-    with get_db() as db:
-        avg_score = db.execute("""
-            SELECT AVG(score) AS score
-            FROM answers
-            WHERE question_id IN (
-                SELECT id FROM questions WHERE interview_id=?
-            )
-              AND score IS NOT NULL
-        """, (interview_id,)).fetchone()["score"]
-
-    avg_score = avg_score or 0
-
-    # Load pass threshold
-    with get_db() as db:
-        row = db.execute("SELECT value FROM pass_threshold LIMIT 1").fetchone()
-
-    threshold = row["value"] if row else 0.5  # default 50%
-
-    passed = avg_score >= threshold * 5  # score max is 5
-
-    return {
-        "interview_id": interview_id,
-        "candidate_profile": candidate_profile,
-        "average_score": round(avg_score, 2),
-        "passed": passed,
-        "threshold": threshold
-    }
+    # Generate, save (inside service), and return
+    report = generate_final_report(interview_id)
+    return report.model_dump()

@@ -65,22 +65,47 @@ Provide structured commentary:
 Strengths: {json.dumps(strengths)}
 Weaknesses: {json.dumps(weaknesses)}
 
-JSON only:
+RETURN JSON ONLY in EXACT format:
 {{
   "strength_comments": {{ skill_name: commentary }},
   "weakness_comments": {{ skill_name: commentary }},
   "anything_extra": "short remark"
 }}
 """
-    response = get_openai_client().chat.completions.create(
-        model="gpt-4o",
-        temperature=0.25,
-        messages=[
-            {"role": "system", "content": "Return JSON only"},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return json.loads(response.choices[0].message.content)
+
+    try:
+        response = get_openai_client().chat.completions.create(
+            model="gpt-4o-mini",  # cheaper, faster, fewer token issues
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": "Return ONLY valid JSON. No markdown."},
+                {"role": "user", "content": prompt}
+            ],
+        )
+        content = response.choices[0].message.content.strip()
+
+        # Ensure not empty and JSON-parsable
+        if not content or not (content.startswith("{") and content.endswith("}")):
+            raise ValueError("Invalid or empty response from OpenAI")
+
+        return json.loads(content)
+
+    except Exception as e:
+        print("⚠️ AI commentary failed, using fallback.", str(e))
+        print("⚠️ Response content:", locals().get("content", " <None> "))
+
+        # SAFE fallback to prevent breaking reports
+        return {
+            "strength_comments": {
+                s["name"]: "Candidate showed strong performance in this skill."
+                for s in strengths
+            },
+            "weakness_comments": {
+                w["name"]: "This skill area needs deeper improvement."
+                for w in weaknesses
+            },
+            "anything_extra": "Automated fallback applied.",
+        }
 
 
 def generate_final_report(interview_id: int) -> FinalReport:

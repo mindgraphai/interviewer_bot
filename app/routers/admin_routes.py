@@ -128,13 +128,16 @@ def list_candidates(user=Depends(verify_api_key)):
         raise HTTPException(status_code=403, detail="Admin only")
 
     # Fetch candidates with some aggregated stats
+    # Fetch candidates with some aggregated stats
     with get_db() as db:
-        # Get all interviews joined with users
-        # We also want average score.
+        # Get all users (except admin), joined with their interviews (if any)
+        # If multiple interviews, this returns multiple rows per user (which is fine, distinct candidacies)
+        # If no interview, returns one row with null interview fields
         rows = db.execute("""
             SELECT 
-                i.id as interview_id,
+                u.id as user_id,
                 u.username as name,
+                i.id as interview_id,
                 i.status,
                 i.created_at,
                 (
@@ -143,8 +146,13 @@ def list_candidates(user=Depends(verify_api_key)):
                     JOIN questions q ON a.question_id = q.id 
                     WHERE q.interview_id = i.id AND a.score IS NOT NULL
                 ) as avg_score
-            FROM interviews i
-            JOIN users u ON i.user_id = u.id
+            FROM users u
+            LEFT JOIN interviews i ON i.id = (
+                SELECT id FROM interviews 
+                WHERE user_id = u.id 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            )
             WHERE u.username != 'admin'
             ORDER BY i.created_at DESC
         """).fetchall()
@@ -152,15 +160,16 @@ def list_candidates(user=Depends(verify_api_key)):
         candidates = []
         for r in rows:
             score = r["avg_score"] if r["avg_score"] else 0.0
-            # Normalize to 5.0 scale if it isn't already (Assuming score is 1-5 from model)
-            # answers.score is usually None or int.
-            
+            status = r["status"] if r["status"] else "NO_INTERVIEW"
+            interview_id = r["interview_id"] # Matches SQL alias
+
             candidates.append({
-                "id": r["interview_id"],
+                "id": interview_id, # Can be None
+                "user_id": r["user_id"],
                 "name": r["name"],
                 "score": round(score, 1),
-                "domain": "General", # Placeholder or could extract from resume/job
-                "status": r["status"]
+                "domain": "General", 
+                "status": status
             })
             
     return candidates

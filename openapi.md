@@ -61,6 +61,27 @@ Returns:
 }
 ```
 
+### GET /admin/candidates
+
+Returns list of candidates:
+
+```
+[
+  {
+    "id": 1,
+    "user_id": 101,
+    "name": "john_doe",
+    "score": 4.2,
+    "domain": "General",
+    "status": "COMPLETED"
+  }
+]
+```
+
+### POST /admin/set_job_description_content
+
+Body: `{"content": "..."}`
+
 ---
 
 ## Interviews

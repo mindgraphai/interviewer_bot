@@ -97,8 +97,8 @@ def get_last_answer(interview_id: int) -> dict:
 
 def generate_followup_question(interview_id: int) -> str:
     """
-    Generate a deeper and harder follow-up question based on the candidate's last answer quality.
-    Hardness scaling is applied: if the last answer was strong → make next much harder.
+    Generate a deeper and harder follow-up question based on the last answer.
+    Ensures proper DB storage as a string.
     """
     profile = get_candidate_profile(interview_id)
     last = get_last_answer(interview_id)
@@ -124,28 +124,35 @@ Job Description: {jd}
 
 Rules:
 - The new question must escalate difficulty significantly
-- It must integrate more than one advanced area from the resume
-- Require design-level thinking and real-world tradeoffs
-- Focus on finding weaknesses or pushing boundaries
-- Response: JSON string only (not array), no markdown
-"""
+- It must integrate multiple advanced skills
+- Require design-level reasoning and tradeoffs
+- Strict JSON output as a plain string only
+    """
 
-    response = get_openai_client().chat.completions.create(
+    response = OpenAI().chat.completions.create(
         model="gpt-4o",
         temperature=0.8,
         messages=[
-            {"role": "system", "content": "Return valid JSON only, as a single string"},
+            {"role": "system", "content": "Return valid JSON only (string)"},
             {"role": "user", "content": prompt}
         ]
     )
 
-    new_q = json.loads(response.choices[0].message.content)
+    raw = response.choices[0].message.content
+    try:
+        next_q = json.loads(raw)
+        if not isinstance(next_q, str):
+            next_q = str(next_q)
+    except Exception:
+        # Last line fallback — ensure a string always goes into DB
+        next_q = raw.strip()
 
-    # Store into DB as a new follow-up question
+    # Store into DB
     with get_db() as db:
-        db.execute(
-            "INSERT INTO questions (interview_id, question_text, source_type) VALUES (?, ?, 'followup')",
-            (interview_id, new_q)
+        cursor = db.execute(
+            "INSERT INTO questions (interview_id, question_text, source_type, asked) VALUES (?, ?, 'followup', 0)",
+            (interview_id, next_q)
         )
+        q_id = cursor.lastrowid
 
-    return new_q
+    return next_q

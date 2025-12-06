@@ -103,18 +103,31 @@ def _store_evaluation(interview_id: int, question_id: int, answer: str, result: 
 
         # If vague and retry unused → request retry instead of scoring
         if is_vague and retry_used == 0:
-            db.execute(
-                "UPDATE answers SET answer_text=?, retry_used=1, score=NULL WHERE question_id=?",
-                (answer, question_id)
-            )
+            if prev:
+                db.execute(
+                    "UPDATE answers SET answer_text=?, retry_used=1, score=NULL WHERE question_id=?",
+                    (answer, question_id)
+                )
+            else:
+                db.execute(
+                    "INSERT INTO answers (question_id, answer_text, retry_used, score) VALUES (?, ?, 1, NULL)",
+                    (question_id, answer)
+                )
+
             result["retry_required"] = True
             return
 
         # Finalize scoring
-        db.execute(
-            "UPDATE answers SET answer_text=?, score=?, retry_used=? WHERE question_id=?",
-            (answer, score, retry_used, question_id)
-        )
+        if prev:
+            db.execute(
+                "UPDATE answers SET answer_text=?, score=?, retry_used=? WHERE question_id=?",
+                (answer, score, retry_used, question_id)
+            )
+        else:
+            db.execute(
+                "INSERT INTO answers (question_id, answer_text, retry_used, score) VALUES (?, ?, ?, ?)",
+                (question_id, answer, retry_used, score)
+            )
 
         # Update skill confidence values in skills table
         # (Insert skills if not yet stored for interview)

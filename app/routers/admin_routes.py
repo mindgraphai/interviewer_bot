@@ -72,3 +72,25 @@ def set_question_config(cfg: QuestionConfigUpdate, user=Depends(verify_api_key))
         )
 
     return {"message": "Question config updated successfully", "config": cfg}
+
+
+@router.get("/get_question_config")
+def get_question_config(user=Depends(verify_api_key)):
+    if user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+        
+    with get_db() as db:
+        row = db.execute("SELECT * FROM question_config LIMIT 1").fetchone()
+        
+    if not row:
+         return {
+            "total_questions": 5,
+            "consequential_max": 3,
+            "followup_max": 2
+        }
+        
+    return {
+        "total_questions": row["total_questions"],
+        "consequential_max": row["consequential_max"],
+        "followup_max": row["followup_max"]
+    }

@@ -6,12 +6,11 @@ from app.services.question_service import (
     generate_followup_question
 )
 from app.services.evaluation_service import evaluate_answer
+from app.config import get_question_limits
 
 router = APIRouter(prefix="/questions", tags=["Questions"])
 
-TOTAL_QUESTIONS = 15
-CONSEQUENTIAL_MAX = 8
-FOLLOWUP_MAX = 7
+#TOTAL_QUESTIONS, CONSEQUENTIAL_MAX, FOLLOWUP_MAX = get_question_limits() # Removed global constants
 
 
 from pydantic import BaseModel
@@ -127,6 +126,9 @@ def submit_answer(
               AND question_id IN (SELECT id FROM questions WHERE interview_id=?)
         """, (interview_id,)).fetchone()["cnt"]
 
+    # Get dynamic limits
+    TOTAL_QUESTIONS, _, FOLLOWUP_MAX = get_question_limits()
+
     # End of interview?
     if answered >= TOTAL_QUESTIONS:
         with get_db() as db:
@@ -172,6 +174,17 @@ def submit_answer(
     }
 
 
+@router.get("/config")
+def get_public_question_config(user=Depends(verify_api_key)):
+    """Return the configured number of questions (for frontend progress bar)."""
+    total, conseq, follow = get_question_limits()
+    return {
+        "total_questions": total,
+        "consequential_max": conseq,
+        "followup_max": follow
+    }
+
+
 @router.get("/next/{interview_id}")
 def get_next_question(interview_id: int, user=Depends(verify_api_key)):
     """Fetch the next unasked question. Generate if needed."""
@@ -184,6 +197,9 @@ def get_next_question(interview_id: int, user=Depends(verify_api_key)):
                 SELECT id FROM questions WHERE interview_id=?
             ) AND score IS NOT NULL
         """, (interview_id,)).fetchone()["cnt"]
+
+        # Get dynamic limits
+        TOTAL_QUESTIONS, CONSEQUENTIAL_MAX, _ = get_question_limits()
 
         # Is interview complete?
         if answered >= TOTAL_QUESTIONS:

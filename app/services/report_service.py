@@ -94,7 +94,14 @@ def generate_final_report(interview_id: int) -> FinalReport:
     scores = _get_scores(interview_id)
     threshold = _get_threshold()
     total_score = sum(scores)
-    final_percentage = (total_score - 15) / 60  # normalized 0-1
+    
+    # Calculate percentage dynamically (1-5 scale)
+    n = len(scores)
+    if n > 0:
+        # Min possible = n*1, Max possible = n*5 -> Range = 4*n
+        final_percentage = (total_score - n) / (4 * n)
+    else:
+        final_percentage = 0.0
 
     skills_raw = _get_skill_scores(interview_id)
     strengths_raw, weaknesses_raw = _classify_strengths_and_weaknesses(skills_raw)

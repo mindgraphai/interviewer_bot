@@ -112,4 +112,4 @@ def init_db():
 
         existing = db.execute("SELECT COUNT(*) cnt FROM question_config").fetchone()["cnt"]
         if existing == 0:
-            db.execute("INSERT INTO question_config (total_questions, consequential_max, followup_max) VALUES (15, 8, 7)")
+            db.execute("INSERT INTO question_config (total_questions, consequential_max, followup_max) VALUES (5, 3, 2)")

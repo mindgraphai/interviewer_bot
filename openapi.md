@@ -32,9 +32,32 @@ Requires admin API key
 
 Body:
 
-```
 {
   "value": 0.85
+}
+```
+
+### POST /admin/set_question_config
+
+Body:
+
+```
+{
+  "total_questions": 15,
+  "consequential_max": 8,
+  "followup_max": 7
+}
+```
+
+### GET /admin/get_question_config
+
+Returns:
+
+```
+{
+  "total_questions": 15,
+  "consequential_max": 8,
+  "followup_max": 7
 }
 ```
 
@@ -57,6 +80,18 @@ Response:
 ---
 
 ## Questions
+
+### GET /questions/config
+
+Returns the configured question limits:
+
+```
+{
+  "total_questions": 15,
+  "consequential_max": 8,
+  "followup_max": 7
+}
+```
 
 ### GET /questions/next/{interview_id}
 

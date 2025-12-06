@@ -113,3 +113,28 @@ def init_db():
         existing = db.execute("SELECT COUNT(*) cnt FROM question_config").fetchone()["cnt"]
         if existing == 0:
             db.execute("INSERT INTO question_config (total_questions, consequential_max, followup_max) VALUES (5, 3, 2)")
+            
+        # Seed Admin User
+        admin_exists = db.execute("SELECT COUNT(*) cnt FROM users WHERE username='admin'").fetchone()["cnt"]
+        if admin_exists == 0:
+            from app.utils.security import hash_password, generate_api_key
+            hashed = hash_password("admin")
+            key = generate_api_key()
+            db.execute(
+                "INSERT INTO users (username, password, api_key) VALUES (?, ?, ?)",
+                ("admin", hashed, key)
+            )
+            print(f"Admin user created. Key: {key}")
+
+        # Pass Threshold Table
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS pass_threshold (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            value REAL DEFAULT 0.7  -- 70% default cutoff score
+        );
+        """)
+
+        # Ensure 1 config row always exists
+        exists = db.execute("SELECT COUNT(*) AS cnt FROM pass_threshold").fetchone()["cnt"]
+        if exists == 0:
+            db.execute("INSERT INTO pass_threshold (value) VALUES (0.7)")

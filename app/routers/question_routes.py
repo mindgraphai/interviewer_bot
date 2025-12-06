@@ -6,6 +6,7 @@ from app.services.question_service import (
     generate_followup_question
 )
 from app.services.evaluation_service import evaluate_answer
+from app.services.report_service import generate_final_report
 from app.config import get_question_limits
 
 router = APIRouter(prefix="/questions", tags=["Questions"])
@@ -136,6 +137,13 @@ def submit_answer(
                 "UPDATE interviews SET status='COMPLETED' WHERE id=?",
                 (interview_id,)
             )
+        
+        # Trigger report generation
+        try:
+            generate_final_report(interview_id)
+        except Exception as e:
+            print(f"Error generating report: {e}")
+
         return {
             "message": "Interview completed. Fetch final report.",
             "done": True

@@ -126,14 +126,15 @@ Rules:
 - The new question must escalate difficulty significantly
 - It must integrate multiple advanced skills
 - Require design-level reasoning and tradeoffs
-- Strict JSON output as a plain string only
+- JSON ONLY. No markdown.
+- Output as a JSON array of strings
     """
 
-    response = OpenAI().chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4o",
         temperature=0.8,
         messages=[
-            {"role": "system", "content": "Return valid JSON only (string)"},
+            {"role": "system", "content": "Respond with valid JSON only!"},
             {"role": "user", "content": prompt}
         ]
     )

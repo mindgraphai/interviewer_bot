@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.database import get_db
 from app.utils.security import verify_api_key
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -29,6 +30,31 @@ async def set_job_description(
         db.execute(
             "INSERT INTO job_description (content) VALUES (?)",
             (jd_text,)
+        )
+
+    return {"message": "Job description updated successfully"}
+
+
+class JDContent(BaseModel):
+    content: str
+
+
+@router.post("/set_job_description_content")
+def set_job_description_content(
+    data: JDContent,
+    user=Depends(verify_api_key)
+):
+    if user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can update JD")
+
+    if not data.content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    with get_db() as db:
+        db.execute("DELETE FROM job_description")
+        db.execute(
+            "INSERT INTO job_description (content) VALUES (?)",
+            (data.content,)
         )
 
     return {"message": "Job description updated successfully"}
@@ -94,3 +120,47 @@ def get_question_config(user=Depends(verify_api_key)):
         "consequential_max": row["consequential_max"],
         "followup_max": row["followup_max"]
     }
+
+
+@router.get("/candidates")
+def list_candidates(user=Depends(verify_api_key)):
+    if user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    # Fetch candidates with some aggregated stats
+    with get_db() as db:
+        # Get all interviews joined with users
+        # We also want average score.
+        rows = db.execute("""
+            SELECT 
+                i.id as interview_id,
+                u.username as name,
+                i.status,
+                i.created_at,
+                (
+                    SELECT AVG(a.score) 
+                    FROM answers a 
+                    JOIN questions q ON a.question_id = q.id 
+                    WHERE q.interview_id = i.id AND a.score IS NOT NULL
+                ) as avg_score
+            FROM interviews i
+            JOIN users u ON i.user_id = u.id
+            WHERE u.username != 'admin'
+            ORDER BY i.created_at DESC
+        """).fetchall()
+        
+        candidates = []
+        for r in rows:
+            score = r["avg_score"] if r["avg_score"] else 0.0
+            # Normalize to 5.0 scale if it isn't already (Assuming score is 1-5 from model)
+            # answers.score is usually None or int.
+            
+            candidates.append({
+                "id": r["interview_id"],
+                "name": r["name"],
+                "score": round(score, 1),
+                "domain": "General", # Placeholder or could extract from resume/job
+                "status": r["status"]
+            })
+            
+    return candidates

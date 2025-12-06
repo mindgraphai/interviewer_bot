@@ -100,3 +100,16 @@ def init_db():
         # ALTER TABLE interviews
         # ADD COLUMN candidate_profile TEXT;
         # """)
+
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS question_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            total_questions INTEGER DEFAULT 5,
+            consequential_max INTEGER DEFAULT 3,
+            followup_max INTEGER DEFAULT 2
+        );
+        """)
+
+        existing = db.execute("SELECT COUNT(*) cnt FROM question_config").fetchone()["cnt"]
+        if existing == 0:
+            db.execute("INSERT INTO question_config (total_questions, consequential_max, followup_max) VALUES (15, 8, 7)")

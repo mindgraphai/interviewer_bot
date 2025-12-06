@@ -1,6 +1,6 @@
 import json
 from openai import OpenAI
-from app.config import OPENAI_API_KEY
+from app.config import OPENAI_API_KEY, get_question_limits
 from app.database import get_db
 
 

@@ -53,3 +53,22 @@ def set_threshold(data: ThresholdUpdate, user=Depends(verify_api_key)):
         db.execute("INSERT INTO pass_threshold (value) VALUES (?)", (val,))
 
     return {"message": f"Hiring threshold set to {val * 100:.1f}%"}
+
+class QuestionConfigUpdate(BaseModel):
+    total_questions: int
+    consequential_max: int
+    followup_max: int
+
+@router.post("/set_question_config")
+def set_question_config(cfg: QuestionConfigUpdate, user=Depends(verify_api_key)):
+    if user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_db() as db:
+        db.execute("DELETE FROM question_config")
+        db.execute(
+            "INSERT INTO question_config (total_questions, consequential_max, followup_max) VALUES (?, ?, ?)",
+            (cfg.total_questions, cfg.consequential_max, cfg.followup_max)
+        )
+
+    return {"message": "Question config updated successfully", "config": cfg}

@@ -1,6 +1,7 @@
 import json
 from app.utils.pdf2text import extract_text_from_pdf
 from app.database import get_db
+from app.utils.security import generate_interview_token
 from app.config import MAX_PDF_SIZE, OPENAI_API_KEY
 from openai import OpenAI
 
@@ -109,3 +110,29 @@ def process_resume_upload(user_id: int, file_bytes: bytes) -> int:
         interview_id = cursor.lastrowid
 
     return interview_id, candidate_profile
+
+
+def create_candidate_interview(admin_id: int, file_bytes: bytes) -> tuple:
+    """
+    Creates an interview for a candidate via Admin upload.
+    Generates access token.
+    """
+    if len(file_bytes) > MAX_PDF_SIZE:
+        raise ValueError("PDF exceeds 3MB limit")
+
+    resume_text = extract_text_from_pdf(file_bytes)
+    if not resume_text:
+        raise ValueError("Failed to read PDF text. Ensure it's text-based.")
+
+    candidate_profile = analyze_resume(resume_text)
+    token = generate_interview_token()
+
+    with get_db() as db:
+        cursor = db.execute(
+            "INSERT INTO interviews (user_id, resume_blob, resume_text, status, candidate_profile, access_token, created_by_admin) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (admin_id, file_bytes, resume_text, "CREATED", json.dumps(candidate_profile), token, admin_id)
+        )
+        interview_id = cursor.lastrowid
+
+    return interview_id, token, candidate_profile

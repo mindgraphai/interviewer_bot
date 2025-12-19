@@ -143,3 +143,17 @@ def init_db():
         existing_cols = [col["name"] for col in db.execute("PRAGMA table_info(interviews);")]
         if "final_report" not in existing_cols:
             db.execute("ALTER TABLE interviews ADD COLUMN final_report TEXT;")
+
+        # Token-based access columns
+        if "access_token" not in existing_cols:
+            db.execute("ALTER TABLE interviews ADD COLUMN access_token TEXT;")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_interviews_token ON interviews(access_token);")
+
+        if "token_used" not in existing_cols:
+            db.execute("ALTER TABLE interviews ADD COLUMN token_used BOOLEAN DEFAULT 0;")
+
+        if "expires_at" not in existing_cols:
+            db.execute("ALTER TABLE interviews ADD COLUMN expires_at DATETIME NULL;")
+
+        if "created_by_admin" not in existing_cols:
+            db.execute("ALTER TABLE interviews ADD COLUMN created_by_admin INTEGER;")

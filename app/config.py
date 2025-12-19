@@ -13,6 +13,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Max size for resume uploads (bytes)
 MAX_PDF_SIZE = 3 * 1024 * 1024  # 3MB limit
 
+# Frontend URL for link generation
+FRONTEND_SERVER_URL = os.getenv("FRONTEND_SERVER_URL", "http://localhost:5173")
+
 if not OPENAI_API_KEY:
     raise ValueError("Missing OPENAI_API_KEY in .env")
 

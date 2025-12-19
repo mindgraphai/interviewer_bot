@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.database import get_db
 from app.utils.security import verify_api_key
+from app.config import FRONTEND_SERVER_URL
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -8,6 +9,8 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 from fastapi import UploadFile, File
 from app.utils.pdf2text import extract_text_from_pdf
+from app.services.resume_service import create_candidate_interview
+import json
 
 @router.post("/set_job_description")
 async def set_job_description(
@@ -122,54 +125,73 @@ def get_question_config(user=Depends(verify_api_key)):
     }
 
 
+@router.post("/interviews")
+async def create_interview(
+    file: UploadFile = File(...),
+    user=Depends(verify_api_key)
+):
+    if user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+        
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF resumes allowed")
+        
+    file_bytes = await file.read()
+    
+    try:
+        interview_id, token, profile = create_candidate_interview(user["user_id"], file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    return {
+        "interview_id": interview_id,
+        "candidate_link": f"{FRONTEND_SERVER_URL}/interview/start/{token}"
+    }
+
+
 @router.get("/candidates")
 def list_candidates(user=Depends(verify_api_key)):
     if user["username"] != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
-    # Fetch candidates with some aggregated stats
-    # Fetch candidates with some aggregated stats
     with get_db() as db:
-        # Get all users (except admin), joined with their interviews (if any)
-        # If multiple interviews, this returns multiple rows per user (which is fine, distinct candidacies)
-        # If no interview, returns one row with null interview fields
         rows = db.execute("""
             SELECT 
-                u.id as user_id,
-                u.username as name,
                 i.id as interview_id,
                 i.status,
                 i.created_at,
+                i.candidate_profile,
                 (
                     SELECT AVG(a.score) 
                     FROM answers a 
                     JOIN questions q ON a.question_id = q.id 
                     WHERE q.interview_id = i.id AND a.score IS NOT NULL
                 ) as avg_score
-            FROM users u
-            LEFT JOIN interviews i ON i.id = (
-                SELECT id FROM interviews 
-                WHERE user_id = u.id 
-                ORDER BY created_at DESC 
-                LIMIT 1
-            )
-            WHERE u.username != 'admin'
+            FROM interviews i
             ORDER BY i.created_at DESC
         """).fetchall()
         
         candidates = []
         for r in rows:
             score = r["avg_score"] if r["avg_score"] else 0.0
-            status = r["status"] if r["status"] else "NO_INTERVIEW"
-            interview_id = r["interview_id"] # Matches SQL alias
+            
+            name = "Unknown Candidate"
+            domain = "General"
+            
+            if r["candidate_profile"]:
+                try:
+                    prof = json.loads(r["candidate_profile"])
+                    name = prof.get("candidate_name", name)
+                    domain = prof.get("domain", domain)
+                except:
+                    pass
 
             candidates.append({
-                "id": interview_id, # Can be None
-                "user_id": r["user_id"],
-                "name": r["name"],
+                "id": r["interview_id"],
+                "name": name,
                 "score": round(score, 1),
-                "domain": "General", 
-                "status": status
+                "domain": domain, 
+                "status": r["status"]
             })
             
     return candidates

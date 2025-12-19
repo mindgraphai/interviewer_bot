@@ -35,3 +35,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def generate_api_key() -> str:
     # 32 random bytes → 64 char hex string (base16)
     return os.urandom(32).hex()
+
+def generate_interview_token() -> str:
+    """Generate a secure, random token for interview access."""
+    # 32 bytes random hex (64 chars)
+    return os.urandom(32).hex()

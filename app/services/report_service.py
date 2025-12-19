@@ -120,6 +120,13 @@ RETURN JSON ONLY in EXACT format:
 
 def generate_final_report(interview_id: int) -> FinalReport:
     """Compute final report, update DB, and return Pydantic model."""
+    # Check if report already exists
+    with get_db() as db:
+        row = db.execute("SELECT final_report FROM interviews WHERE id=?", (interview_id,)).fetchone()
+        
+    if row and row["final_report"]:
+        return FinalReport(**json.loads(row["final_report"]))
+
     scores = _get_scores(interview_id)
     threshold = _get_threshold()
     total_score = sum(scores)

@@ -58,9 +58,19 @@ def _classify_strengths_and_weaknesses(skills: list):
     return sorted_skills[:3], sorted_skills[-3:]
 
 
-def _get_ai_commentary(strengths, weaknesses):
+def get_global_job_description():
+    """Fetch the single global Job Description text."""
+    with get_db() as db:
+        row = db.execute("SELECT content FROM job_description").fetchone()
+        return row["content"] if row else ""
+
+
+def _get_ai_commentary(strengths, weaknesses, job_description):
     prompt = f"""
-Provide structured commentary:
+Provide structured commentary based on the Candidate's performance and the Job Description.
+
+Job Description:
+{job_description}
 
 Strengths: {json.dumps(strengths)}
 Weaknesses: {json.dumps(weaknesses)}
@@ -120,7 +130,8 @@ def generate_final_report(interview_id: int) -> FinalReport:
 
     skills_raw = _get_skill_scores(interview_id)
     strengths_raw, weaknesses_raw = _classify_strengths_and_weaknesses(skills_raw)
-    ai_comments = _get_ai_commentary(strengths_raw, weaknesses_raw)
+    job_description = get_global_job_description()
+    ai_comments = _get_ai_commentary(strengths_raw, weaknesses_raw, job_description)
 
     is_selected = final_percentage >= threshold
     recommendation = "SELECTED" if is_selected else "REJECTED"
